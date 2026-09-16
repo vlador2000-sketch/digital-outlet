@@ -1,9 +1,28 @@
 <!DOCTYPE html>
-<html>
+<html lang="sr-Latn-ME">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url=/DiGiTaL.html">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DiGiTaL OUTLET</title>
 </head>
 <body>
+<script>
+fetch('/DiGiTaL.html', {cache:'no-store'})
+  .then(r => r.text())
+  .then(html => {
+    html = html.replace(
+      'https://en.wikipedia.org/wiki/Special:Redirect/file/Conor_McGregor_2018.jpg',
+      'assets/ufc3.jpg'
+    );
+    html = html.replace(
+      'https://en.wikipedia.org/wiki/Special:Redirect/file/EA_Sports_UFC_3.jpg',
+      'assets/ufc3.jpg'
+    );
+    document.open();
+    document.write(html);
+    document.close();
+  })
+  .catch(() => { window.location.href='/DiGiTaL.html'; });
+</script>
 </body>
 </html>
