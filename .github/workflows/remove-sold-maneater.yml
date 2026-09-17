@@ -20,25 +20,32 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path('DiGiTaL.html')
           html = path.read_text(encoding='utf-8')
+          low = html.lower()
 
-          card_re = re.compile(r'<article\\b[^>]*class=["\'][^"\']*\\bcard\\b[^"\']*["\'][^>]*>.*?</article>', re.I | re.S)
+          start = 0
+          removed = False
+          while True:
+              start = low.find('<article class="card">', start)
+              if start < 0:
+                  break
+              end = low.find('</article>', start)
+              if end < 0:
+                  break
+              end += len('</article>')
+              card = low[start:end]
+              if 'alt="maneater"' in card and '<div class="game">maneater</div>' in card:
+                  html = html[:start] + html[end:]
+                  removed = True
+                  break
+              start = end
 
-          def replace_card(match):
-              card = match.group(0)
-              is_maneater = bool(re.search(r'<img\\b[^>]*\\balt=["\']Maneater["\']', card, re.I)) or bool(re.search(r'<div\\b[^>]*\\bclass=["\']game["\'][^>]*>\\s*Maneater\\s*</div>', card, re.I))
-              return '' if is_maneater else card
-
-          cleaned = card_re.sub(replace_card, html)
-          if cleaned == html:
+          if not removed:
               raise SystemExit('MANEATER card was not found; no commit made.')
-          if len(card_re.findall(cleaned)) >= len(card_re.findall(html)):
-              raise SystemExit('Catalog card count did not decrease.')
 
-          path.write_text(cleaned, encoding='utf-8')
+          path.write_text(html, encoding='utf-8')
           print('MANEATER removed from DiGiTaL.html')
           PY
 
