@@ -769,4 +769,4 @@ body{
   update();
 })();
 </script>
-</body></html>
+\n<!-- DIGITAL SEARCH FIX v2 -->\n<script>\n(function(){\n  function initSearch(){\n    const input=document.getElementById('q');\n    const grid=document.getElementById('grid');\n    const stats=document.getElementById('stats');\n    if(!input||!grid) return;\n    const cards=Array.from(grid.querySelectorAll('.card'));\n    const norm=v=>String(v||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();\n    const update=()=>{\n      const q=norm(input.value);\n      let shown=0;\n      cards.forEach(card=>{\n        const text=norm(card.textContent);\n        const match=!q || text.includes(q);\n        card.hidden=!match;\n        if(match) shown++;\n      });\n      if(stats) stats.textContent='🎮 Prikazano '+shown+' od '+cards.length+' igara';\n    };\n    input.addEventListener('input',update);\n    input.addEventListener('search',update);\n    update();\n  }\n  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initSearch);\n  else initSearch();\n})();\n</script>\n</body></html>
