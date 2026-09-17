@@ -1,0 +1,53 @@
+name: Remove sold MANEATER
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  clean-catalog:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Remove MANEATER card from catalog
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('DiGiTaL.html')
+          html = path.read_text(encoding='utf-8')
+
+          card_re = re.compile(r'<article\\b[^>]*class=["\'][^"\']*\\bcard\\b[^"\']*["\'][^>]*>.*?</article>', re.I | re.S)
+
+          def replace_card(match):
+              card = match.group(0)
+              is_maneater = bool(re.search(r'<img\\b[^>]*\\balt=["\']Maneater["\']', card, re.I)) or bool(re.search(r'<div\\b[^>]*\\bclass=["\']game["\'][^>]*>\\s*Maneater\\s*</div>', card, re.I))
+              return '' if is_maneater else card
+
+          cleaned = card_re.sub(replace_card, html)
+          if cleaned == html:
+              raise SystemExit('MANEATER card was not found; no commit made.')
+          if len(card_re.findall(cleaned)) >= len(card_re.findall(html)):
+              raise SystemExit('Catalog card count did not decrease.')
+
+          path.write_text(cleaned, encoding='utf-8')
+          print('MANEATER removed from DiGiTaL.html')
+          PY
+
+      - name: Commit cleaned catalog
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add DiGiTaL.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Remove sold Maneater from catalog'
+          git push
