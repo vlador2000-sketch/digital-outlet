@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -22,19 +24,19 @@ export default {
     if (path === "/digital") {
       url.pathname = "/DiGiTaL.html";
       const response = await env.ASSETS.fetch(new Request(url, request));
-      return acceptsHtml ? addPresenceScript(response, url.origin) : response;
+      return acceptsHtml ? addPresenceScript(response) : response;
     }
 
     if (acceptsHtml && path.endsWith(".html")) {
       const response = await env.ASSETS.fetch(request);
-      return addPresenceScript(response, url.origin);
+      return addPresenceScript(response);
     }
 
     return env.ASSETS.fetch(request);
   }
 };
 
-function addPresenceScript(response, origin) {
+function addPresenceScript(response) {
   if (!(response.headers.get("content-type") || "").includes("text/html")) return response;
   const script = `
 <script>
@@ -53,10 +55,9 @@ function addPresenceScript(response, origin) {
     .transform(response);
 }
 
-export class Presence {
+export class Presence extends DurableObject {
   constructor(state, env) {
-    this.ctx = state;
-    this.env = env;
+    super(state, env);
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
@@ -121,4 +122,3 @@ small{display:block;color:#666;margin-top:28px}
 })();
 </script>
 </body></html>`;
-
