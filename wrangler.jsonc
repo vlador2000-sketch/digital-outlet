@@ -2,6 +2,12 @@
   "name": "outlet",
   "main": "_worker.js",
   "compatibility_date": "2026-09-12",
+  "exports": {
+    "Presence": {
+      "type": "durable-object",
+      "state": "deleted"
+    }
+  },
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
