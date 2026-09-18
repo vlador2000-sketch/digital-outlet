@@ -1,0 +1,81 @@
+name: Remove UFC 6 safely
+
+on:
+  push:
+    paths:
+      - '.github/workflows/remove-ufc6-once-20260918.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove only UFC 6 card and validate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('DiGiTaL.html')
+          text = path.read_text(encoding='utf-8')
+          marker = '<article class="card">'
+          target = '<div class="game">UFC 6</div>'
+
+          before_cards = text.count(marker)
+          if before_cards != 86:
+              raise SystemExit(f'ABORT: expected 86 cards before removal, found {before_cards}')
+          if text.count(target) != 1:
+              raise SystemExit(f'ABORT: expected exactly one UFC 6 game marker, found {text.count(target)}')
+          if '<div class="game">UFC 3</div>' not in text:
+              raise SystemExit('ABORT: UFC 3 marker missing before edit')
+
+          parts = text.split(marker)
+          match_indexes = [i for i in range(1, len(parts)) if target in parts[i]]
+          if len(match_indexes) != 1:
+              raise SystemExit(f'ABORT: UFC 6 card match count is {len(match_indexes)}, expected 1')
+
+          del parts[match_indexes[0]]
+          new_text = marker.join(parts)
+
+          after_cards = new_text.count(marker)
+          checks = {
+              'card count reduced by one': after_cards == 85,
+              'UFC 6 removed': target not in new_text,
+              'UFC 3 preserved': '<div class="game">UFC 3</div>' in new_text,
+              'search input preserved': 'id="q"' in new_text,
+              'grid preserved': 'id="grid" class="grid"' in new_text,
+              'document closes once': new_text.count('</body></html>') == 1,
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              raise SystemExit('ABORT: validation failed: ' + ', '.join(failed))
+
+          path.write_text(new_text, encoding='utf-8')
+          print('OK: UFC 6 removed; 86 -> 85 cards; UFC 3 preserved.')
+          PY
+
+      - name: Validate diff scope
+        shell: bash
+        run: |
+          set -e
+          git diff --check
+          changed="$(git diff --name-only)"
+          test "$changed" = "DiGiTaL.html"
+          git diff --stat
+
+      - name: Commit removal
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DiGiTaL.html
+          git commit -m "Remove sold UFC 6 from catalog"
+          git push origin HEAD:main
