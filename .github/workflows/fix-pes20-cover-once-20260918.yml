@@ -1,0 +1,58 @@
+name: Fix PES 20 cover safely
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-pes20-cover-once-20260918.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Replace only PES 20 cover
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('DiGiTaL.html')
+          s=p.read_text(encoding='utf-8')
+          target='<div class="game">PES 20</div>'
+          if s.count(target)!=1: raise SystemExit(f'ABORT: PES 20 count {s.count(target)}')
+          starts=[m.start() for m in re.finditer(r'<article class="card">',s)]
+          pos=s.index(target)
+          start=max(x for x in starts if x<pos)
+          end=s.find('</article>',pos)+len('</article>')
+          card=s[start:end]
+          url='https://www.konami.com/kde_cms/na_publish/uploads/ps4_2d_pes2020_standard-esrb-1024x1293.png'
+          newcard,n=re.subn(r'(<img\b[^>]*class="cover"[^>]*\bsrc=")[^"]*(")',lambda m:m.group(1)+url+m.group(2),card,count=1,flags=re.S)
+          if n!=1: raise SystemExit('ABORT: cover image not found in PES card')
+          if '<div class="price">10€</div>' not in newcard: raise SystemExit('ABORT: PES price changed/missing')
+          ns=s[:start]+newcard+s[end:]
+          if ns.count('<article class="card">')!=86: raise SystemExit('ABORT: card count changed')
+          if ns.count(target)!=1: raise SystemExit('ABORT: PES marker changed')
+          p.write_text(ns,encoding='utf-8')
+          print('OK: official Konami PES 2020 PS4 cover set; 86 cards preserved; price 10€ preserved.')
+          PY
+      - name: Validate diff
+        shell: bash
+        run: |
+          set -e
+          git diff --check
+          test "$(git diff --name-only)" = "DiGiTaL.html"
+          git diff --stat
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DiGiTaL.html
+          git commit -m "Fix PES 20 cover image"
+          git push origin HEAD:main
