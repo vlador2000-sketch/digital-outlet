@@ -11,3 +11,5 @@ export default {
     return env.ASSETS.fetch(request);
   }
 };
+
+// Restore last known-good catalog deployment.
