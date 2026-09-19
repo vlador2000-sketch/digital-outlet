@@ -1,16 +1,10 @@
 name: Add live catalog counter
 
 on:
-  push:
-    paths:
-      - '.github/workflows/add-live-counter-once-20260919.yml'
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
-  add-live-counter:
+  noop:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: echo "This workflow has already been replaced by the validated live-counter commit path."
+      - run: echo "Disabled one-time workflow"
