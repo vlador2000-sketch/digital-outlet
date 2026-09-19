@@ -6,18 +6,30 @@
     "Presence": {
       "type": "durable-object",
       "state": "deleted"
+    },
+    "CatalogPresence": {
+      "type": "durable-object",
+      "storage": "sqlite"
     }
   },
   "observability": {
-      "logs": {
-        "enabled": true,
-        "invocation_logs": true,
-        "persist": true
-      }
-    },
-    "assets": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
+  "assets": {
     "directory": ".",
     "binding": "ASSETS",
     "run_worker_first": false
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CATALOG_PRESENCE",
+        "class_name": "CatalogPresence"
+      }
+    ]
   }
 }

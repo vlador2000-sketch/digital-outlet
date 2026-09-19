@@ -770,22 +770,26 @@ body{
 </script>
 
 
-<!-- DIGITAL VISIT COUNTER v1 -->
+<!-- DIGITAL LIVE COUNTER v2 -->
 <script>
 (() => {
   try {
-    const key = 'digital_catalog_visitor_id';
-    let id = localStorage.getItem(key);
+    const key = 'digital_live_session_id';
+    let id = sessionStorage.getItem(key);
     if (!id) {
       id = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)+Date.now().toString(36));
-      localStorage.setItem(key,id);
+      sessionStorage.setItem(key,id);
     }
-    fetch('/__visit', {
+    const ping = () => fetch('/__presence', {
       method:'POST',
       headers:{'content-type':'application/json'},
-      body:JSON.stringify({id, path:location.pathname}),
-      keepalive:true
+      body:JSON.stringify({id}),
+      keepalive:true,
+      cache:'no-store'
     }).catch(()=>{});
+    ping();
+    setInterval(ping, 30000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) ping(); });
   } catch(e) {}
 })();
 </script>
