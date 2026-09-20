@@ -1,0 +1,56 @@
+name: Optimize catalog covers v2
+
+on:
+  push:
+    branches:
+      - optimize-covers-20260920
+    paths:
+      - '.github/workflows/optimize-covers-v2-20260920.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: optimize-covers-20260920
+
+      - name: Install image tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow requests ddgs
+
+      - name: Optimize covers
+        run: python scripts/optimize_covers.py
+
+      - name: Validate catalog
+        shell: bash
+        run: |
+          set -e
+          test "$(grep -o '<article class="card">' DiGiTaL.html | wc -l)" -eq 86
+          test "$(find covers -type f -name '*.webp' | wc -l)" -eq 86
+          ! grep -q 'data:image/' DiGiTaL.html
+          python - <<'PY'
+          from pathlib import Path
+          files=list(Path('covers').glob('*.webp'))
+          too_big=[(p,p.stat().st_size) for p in files if p.stat().st_size>80000]
+          if too_big:
+              raise SystemExit('Oversized covers: '+', '.join(f'{p}:{n}' for p,n in too_big))
+          print('Validation OK; max cover bytes:',max(p.stat().st_size for p in files))
+          PY
+          git diff --check
+
+      - name: Commit optimized catalog to isolated branch
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DiGiTaL.html covers cover-optimization-report.md
+          git commit -m "Optimize all catalog cover images"
+          git push origin HEAD:optimize-covers-20260920
