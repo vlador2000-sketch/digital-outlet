@@ -1,0 +1,119 @@
+name: Optimize catalog covers v4
+
+on:
+  push:
+    branches:
+      - optimize-covers-20260920
+    paths:
+      - '.github/workflows/optimize-covers-v4-20260920.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: optimize-covers-20260920
+
+      - name: Install image tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow requests ddgs
+
+      - name: Patch optimizer safeguards
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/optimize_covers_v3.py')
+          s=p.read_text(encoding='utf-8')
+          old="m=re.search(r'<img[^>]*class=\"cover\"[^>]*src=\"([^\"]+)\"',block,re.S) or re.search(r'<img[^>]*src=\"([^\"]+)\"[^>]*class=\"cover\"',block,re.S); return htmllib.unescape(m.group(1)) if m else ''"
+          new="m=re.search(r'<img[^>]*\\bsrc=\"([^\"]+)\"',block,re.S); return htmllib.unescape(m.group(1)) if m else ''"
+          if old not in s:
+              raise SystemExit('ABORT: get_src patch target not found')
+          s=s.replace(old,new,1)
+          old2="if ii and ii[0]>=650 and ii[1]>=650:return d,KNOWN[title],ii,'confirmed'"
+          new2="if ii and ii[0]>=650 and ii[1]>=650 and 0.52 <= (ii[0]/ii[1]) <= 1.10:return d,KNOWN[title],ii,'confirmed'"
+          if old2 not in s:
+              raise SystemExit('ABORT: known-image ratio patch target not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Optimize covers
+        run: python scripts/optimize_covers_v3.py
+
+      - name: Validate catalog and compression
+        shell: bash
+        run: |
+          set -e
+          test "$(grep -o '<article class="card">' DiGiTaL.html | wc -l)" -eq 86
+          test "$(find covers -type f -name '*.webp' | wc -l)" -eq 86
+          ! grep -q 'data:image/' <(python - <<'PY'
+          import re
+          s=open('DiGiTaL.html',encoding='utf-8').read()
+          print('\n'.join(re.findall(r'<article class="card">.*?</article>',s,re.S)))
+          PY
+          )
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          fs=list(Path('covers').glob('*.webp'))
+          if len(fs)!=86: raise SystemExit(f'Expected 86 covers, got {len(fs)}')
+          too_big=[]; tiny=[]
+          for p in fs:
+              n=p.stat().st_size
+              if n>80000: too_big.append((str(p),n))
+              with Image.open(p) as im:
+                  if im.width<200 or im.height<200: tiny.append((str(p),im.size))
+          if too_big: raise SystemExit(f'Oversized covers: {too_big}')
+          if tiny: raise SystemExit(f'Tiny optimized covers: {tiny}')
+          print('Validation OK; total KB:',round(sum(p.stat().st_size for p in fs)/1024,1),'avg KB:',round(sum(p.stat().st_size for p in fs)/len(fs)/1024,1),'max KB:',round(max(p.stat().st_size for p in fs)/1024,1))
+          PY
+          git diff --check
+
+      - name: Build visual contact sheet
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image,ImageOps,ImageDraw
+          import re, html
+          s=Path('DiGiTaL.html').read_text(encoding='utf-8')
+          cards=re.findall(r'<article class="card">.*?</article>',s,re.S)
+          items=[]
+          for c in cards:
+              m=re.search(r'<div class="game">(.*?)</div>',c,re.S); title=html.unescape(re.sub('<[^>]+>','',m.group(1)).strip()) if m else '?'
+              imsrc=re.search(r'<img[^>]*src="/covers/([^"]+\.webp)"',c,re.S)
+              if imsrc: items.append((title,Path('covers')/imsrc.group(1)))
+          cellw,cellh=200,250; cols=8; rows=(len(items)+cols-1)//cols
+          sheet=Image.new('RGB',(cols*cellw,rows*cellh),'white'); d=ImageDraw.Draw(sheet)
+          for i,(title,p) in enumerate(items):
+              im=Image.open(p).convert('RGB'); im.thumbnail((180,190),Image.Resampling.LANCZOS)
+              x=(i%cols)*cellw+(cellw-im.width)//2; y=(i//cols)*cellh+5
+              sheet.paste(im,(x,y)); txt=title[:27]
+              d.text(((i%cols)*cellw+6,(i//cols)*cellh+202),txt,fill='black')
+          sheet.save('cover-contact-sheet.jpg',quality=82,optimize=True)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cover-optimization-review
+          path: |
+            cover-contact-sheet.jpg
+            cover-optimization-report.md
+          retention-days: 3
+
+      - name: Commit optimized outputs on isolated branch
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DiGiTaL.html covers cover-optimization-report.md
+          git commit -m "Optimize all catalog cover images"
+          git push origin HEAD:optimize-covers-20260920
