@@ -1,4 +1,6 @@
 const catalogTimeZone = 'Europe/Podgorica';
+const livePanelPasswordHash = '432a3b6e71e25d3ceab300e217f7fd3a20fb132df9e5ab66853d153863440a28';
+const newVisitorsPerIpPerHour = 60;
 const catalogDayFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: catalogTimeZone, year: 'numeric', month: '2-digit', day: '2-digit'
 });
@@ -7,6 +9,43 @@ function catalogDay(timestamp) {
   const parts = catalogDayFormatter.formatToParts(new Date(timestamp));
   const value = type => parts.find(part => part.type === type).value;
   return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+async function sha256Hex(value) {
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
+  return [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function equalHash(a, b) {
+  if (a.length !== b.length) return false;
+  let difference = 0;
+  for (let index = 0; index < a.length; index++) difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return difference === 0;
+}
+
+async function isLivePanelAuthorized(request) {
+  const authorization = request.headers.get('Authorization') || '';
+  if (!authorization.startsWith('Basic ')) return false;
+  try {
+    const decoded = atob(authorization.slice(6));
+    const separator = decoded.indexOf(':');
+    if (separator < 0) return false;
+    return equalHash(await sha256Hex(decoded.slice(separator + 1)), livePanelPasswordHash);
+  } catch {
+    return false;
+  }
+}
+
+function livePanelChallenge() {
+  return new Response('Authentication required', {
+    status: 401,
+    headers: {
+      'WWW-Authenticate': 'Basic realm="DiGiTaL LIVE", charset="UTF-8"',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Robots-Tag': 'noindex, nofollow'
+    }
+  });
 }
 
 export class CatalogPresence {
@@ -24,6 +63,11 @@ export class CatalogPresence {
         CREATE TABLE IF NOT EXISTS counters (
           key TEXT PRIMARY KEY,
           value INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS visitor_rate_limits (
+          ip TEXT PRIMARY KEY,
+          hour_bucket INTEGER NOT NULL,
+          new_visitor_count INTEGER NOT NULL
         );
       `);
     });
@@ -45,6 +89,16 @@ export class CatalogPresence {
 
       const existing = [...this.ctx.storage.sql.exec('SELECT id FROM sessions WHERE id = ? LIMIT 1', id)];
       if (existing.length === 0) {
+        const ip = String(request.headers.get('X-Catalog-Client-IP') || 'unknown').slice(0, 64);
+        const hourBucket = Math.floor(now / (60 * 60 * 1000));
+        const limitRows = [...this.ctx.storage.sql.exec('SELECT hour_bucket, new_visitor_count FROM visitor_rate_limits WHERE ip = ? LIMIT 1', ip)];
+        const previous = limitRows[0];
+        const count = previous?.hour_bucket === hourBucket ? Number(previous.new_visitor_count) : 0;
+        if (count >= newVisitorsPerIpPerHour) return new Response(null, {status:204});
+        this.ctx.storage.sql.exec(
+          'INSERT INTO visitor_rate_limits (ip, hour_bucket, new_visitor_count) VALUES (?, ?, 1) ON CONFLICT(ip) DO UPDATE SET hour_bucket = excluded.hour_bucket, new_visitor_count = CASE WHEN visitor_rate_limits.hour_bucket = excluded.hour_bucket THEN visitor_rate_limits.new_visitor_count + 1 ELSE 1 END',
+          ip, hourBucket
+        );
         this.ctx.storage.sql.exec('INSERT INTO sessions (id, first_seen, last_seen, day) VALUES (?, ?, ?, ?)', id, now, now, day);
         this.ctx.storage.sql.exec("INSERT INTO counters (key,value) VALUES ('total',1) ON CONFLICT(key) DO UPDATE SET value=value+1");
         this.ctx.storage.sql.exec('INSERT INTO counters (key,value) VALUES (?,1) ON CONFLICT(key) DO UPDATE SET value=value+1', 'day:'+day);
@@ -91,16 +145,20 @@ export default {
     if (path === '/__presence' && request.method === 'POST') {
       const id = env.CATALOG_PRESENCE.idFromName('digital-catalog');
       const stub = env.CATALOG_PRESENCE.get(id);
-      return stub.fetch('https://presence.internal/ping', request);
+      const headers = new Headers(request.headers);
+      headers.set('X-Catalog-Client-IP', request.headers.get('CF-Connecting-IP') || 'unknown');
+      return stub.fetch('https://presence.internal/ping', new Request(request, {headers}));
     }
 
     if (path === '/__stats' && request.method === 'GET') {
+      if (!await isLivePanelAuthorized(request)) return livePanelChallenge();
       const id = env.CATALOG_PRESENCE.idFromName('digital-catalog');
       const stub = env.CATALOG_PRESENCE.get(id);
       return stub.fetch('https://presence.internal/stats');
     }
 
     if (path === '/digital-live-7k9m2p4x') {
+      if (!await isLivePanelAuthorized(request)) return livePanelChallenge();
       return new Response(dashboard, {headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-robots-tag':'noindex, nofollow'}});
     }
 
