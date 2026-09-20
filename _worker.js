@@ -1,3 +1,14 @@
+const catalogTimeZone = 'Europe/Podgorica';
+const catalogDayFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: catalogTimeZone, year: 'numeric', month: '2-digit', day: '2-digit'
+});
+
+function catalogDay(timestamp) {
+  const parts = catalogDayFormatter.formatToParts(new Date(timestamp));
+  const value = type => parts.find(part => part.type === type).value;
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
 export class CatalogPresence {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -21,7 +32,8 @@ export class CatalogPresence {
   async fetch(request) {
     const url = new URL(request.url);
     const now = Date.now();
-    const day = new Date(now).toISOString().slice(0,10);
+    // Select a fresh daily bucket at local midnight; never erase stored counters.
+    const day = catalogDay(now);
 
     if (url.pathname === '/ping' && request.method === 'POST') {
       let id = '';
@@ -53,6 +65,8 @@ export class CatalogPresence {
         online: Number(onlineRows[0]?.n || 0),
         today: Number(todayRows[0]?.value || 0),
         total: Number(totalRows[0]?.value || 0),
+        day,
+        time_zone: catalogTimeZone,
         window_seconds: 90,
         updated_at: new Date(now).toISOString()
       };
