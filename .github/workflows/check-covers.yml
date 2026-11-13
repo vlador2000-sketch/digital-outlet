@@ -1,0 +1,26 @@
+name: Provjera omota DiGiTaL OUTLET
+
+on:
+  pull_request:
+    paths:
+      - 'DiGiTaL.html'
+      - 'covers/**'
+      - 'scripts/**'
+      - '.github/workflows/check-covers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cover-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Provjera postojanja i formata lokalnih omota
+        run: node scripts/check-covers.mjs
+      - name: Test zamjenskog omota u pregledniku (simulacija)
+        run: node --test scripts/test-cover-fallback.mjs
