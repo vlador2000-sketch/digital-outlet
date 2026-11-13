@@ -1,0 +1,35 @@
+name: Provjera OUTLET na telefonu i racunaru
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/mobile-outlet-smoke.mjs'
+      - '.github/workflows/mobile-outlet-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser automation
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium --with-deps
+      - name: Simulate smartphone and desktop on published OUTLET
+        run: node scripts/mobile-outlet-smoke.mjs
+      - name: Upload visual previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outlet-previews
+          path: test-artifacts/*.png
+          retention-days: 7
+          if-no-files-found: ignore
